@@ -1,4 +1,3 @@
-#!/usr/bin/env php
 <?php
 /**
  * Copyright © 2015, Ambroise Maupate
@@ -21,26 +20,37 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  *
- * @file roadiz-cli-tools
+ * @file InstallRoadizCommand.php
  * @author Ambroise Maupate
  */
-use Symfony\Component\Console\Input\ArgvInput;
-use Symfony\Component\Debug\Debug;
-use RZ\RoadizCliTools\Application;
+namespace RZ\RoadizCliTools\Command;
 
-set_time_limit(0);
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputDefinition;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-if (version_compare(phpversion(), '5.4.3', '<')) {
-    echo 'Your PHP version is ' . phpversion() . "." . PHP_EOL;
-    echo 'You need a least PHP version 5.4.3.' . PHP_EOL;
-    exit(1);
+/**
+ * Install Roadiz command.
+ */
+class InstallRoadizCommand extends Command
+{
+    protected function configure()
+    {
+        $this
+            ->setName('roadiz:install')
+            ->setDescription('Install a new Roadiz instance on your webserver.')
+            ->setDefinition(
+                new InputDefinition([
+                    new InputOption('branch', 'b', InputOption::VALUE_OPTIONAL),
+                ])
+            );
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+       // ...
+    }
 }
-
-define('ROADIZ_ROOT', dirname(__DIR__));
-// Include Composer Autoload (relative to project root).
-require("vendor/autoload.php");
-
-Debug::enable();
-
-$application = new Application();
-$application->run();
