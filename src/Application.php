@@ -30,6 +30,7 @@ use RZ\RoadizCliTools\Command as RZCommands;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Helper\DebugFormatterHelper;
+use Symfony\Component\Console\Helper\DialogHelper;
 use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Helper\HelperSet;
 use Symfony\Component\Console\Helper\ProcessHelper;
@@ -53,6 +54,7 @@ class Application extends BaseApplication
         // which is used when using the --help option
         $defaultCommands = parent::getDefaultCommands();
         $defaultCommands[] = new RZCommands\InstallRoadizCommand();
+        $defaultCommands[] = new RZCommands\MoveDataCommand();
 
         return $defaultCommands;
     }
@@ -65,6 +67,7 @@ class Application extends BaseApplication
     protected function getDefaultHelperSet()
     {
         return new HelperSet([
+            new DialogHelper(),
             new FormatterHelper(),
             new DebugFormatterHelper(),
             new ProcessHelper(),
