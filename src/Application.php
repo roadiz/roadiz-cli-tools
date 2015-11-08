@@ -25,16 +25,18 @@
  */
 namespace RZ\RoadizCliTools;
 
-use Symfony\Component\Console\Application as BaseApplication;
 use RZ\RoadizCliTools\Command as RZCommands;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Helper\DebugFormatterHelper;
 use Symfony\Component\Console\Helper\DialogHelper;
 use Symfony\Component\Console\Helper\FormatterHelper;
 use Symfony\Component\Console\Helper\HelperSet;
 use Symfony\Component\Console\Helper\ProcessHelper;
 use Symfony\Component\Console\Helper\QuestionHelper;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
+use Symfony\Component\Yaml\Yaml;
+use Symfony\Component\Config\Definition\Processor;
+use RZ\RoadizCliTools\Configuration;
 
 class Application extends BaseApplication
 {
@@ -55,6 +57,7 @@ class Application extends BaseApplication
         $defaultCommands = parent::getDefaultCommands();
         $defaultCommands[] = new RZCommands\InstallRoadizCommand();
         $defaultCommands[] = new RZCommands\MoveDataCommand();
+        $defaultCommands[] = new RZCommands\RequirementsCommand();
 
         return $defaultCommands;
     }

@@ -2,7 +2,9 @@
     "require": {
         "symfony/process": "^2.7",
         "symfony/console": "^2.7",
-        "symfony/debug": "^2.7"
+        "symfony/debug": "^2.7",
+        "symfony/config": "^2.7",
+        "symfony/yaml": "^2.7"
     },
     "autoload": {
         "psr-4": {

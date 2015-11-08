@@ -20,38 +20,42 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  *
- * @file InstallRoadizCommand.php
+ * @file RequirementsCommand.php
  * @author Ambroise Maupate
  */
 namespace RZ\RoadizCliTools\Command;
 
-use Symfony\Component\Console\Command\Command;
 use RZ\RoadizCliTools\Command\ConfigurableCommand;
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputDefinition;
+use RZ\RoadizCliTools\Requirements;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * Install Roadiz command.
- */
-class InstallRoadizCommand extends ConfigurableCommand
+class RequirementsCommand extends ConfigurableCommand
 {
     protected function configure()
     {
-        $this
-            ->setName('roadiz:install')
-            ->setDescription('Install a new Roadiz instance on your webserver.')
-            ->setDefinition(
-                new InputDefinition([
-                    new InputOption('branch', 'b', InputOption::VALUE_OPTIONAL),
-                ])
-            );
+        $this->setName('roadiz:requirements')
+            ->setDescription('Test available binaries to use roadiz-cli.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-       // ...
+        $binaries = [];
+        $binaries[$this->get('commands.git.path', $output)] = $this->get('commands.git.test', $output);
+        $binaries[$this->get('commands.mysqldump.path', $output)] = $this->get('commands.mysqldump.test', $output);
+        $binaries[$this->get('commands.mysql.path', $output)] = $this->get('commands.mysql.test', $output);
+        $binaries[$this->get('commands.cp.path', $output)] = $this->get('commands.cp.test', $output);
+        $binaries[$this->get('commands.rsync.path', $output)] = $this->get('commands.rsync.test', $output);
+        $binaries[$this->get('commands.composer.path', $output)] = $this->get('commands.composer.test', $output);
+
+        $requirements = new Requirements($binaries);
+        $final = $requirements->testBinaries($output);
+
+        if ($final) {
+            $output->writeln('<info>All requirements passed</info>');
+        } else {
+            $output->writeln('<error>Requirements failed</error>');
+        }
     }
 }

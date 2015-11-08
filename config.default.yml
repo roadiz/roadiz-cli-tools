@@ -1,0 +1,25 @@
+---
+commands:
+    git:
+        path: git
+        test: git --version
+    mysqldump:
+        path: mysqldump
+        test: mysqldump --version
+    mysql:
+        path: mysql
+        test: mysql --version
+    cp:
+        path: cp
+        test: whereis cp
+    rsync:
+        path: rsync
+        test: rsync --version
+    composer:
+        path: composer
+        test: composer --version
+db:
+    host: localhost
+    username: ~
+    password: ~
+    port: ~

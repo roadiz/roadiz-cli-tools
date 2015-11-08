@@ -26,20 +26,22 @@
 namespace RZ\RoadizCliTools\Command;
 
 use Symfony\Component\Console\Command\Command;
+use RZ\RoadizCliTools\Command\ConfigurableCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\ProcessBuilder;
+use Symfony\Component\Process\Exception\ProcessFailedException;
 
 /**
  * Move data from one Roadiz instance to an other.
  */
-class MoveDataCommand extends Command
+class MoveDataCommand extends ConfigurableCommand
 {
     protected $sourcePath;
     protected $sourceDatabaseName;
-
     protected $destPath;
     protected $destDatabaseName;
 
@@ -65,27 +67,64 @@ class MoveDataCommand extends Command
         $this->sourceDatabaseName = $input->getArgument('source-database');
         $this->destPath = $input->getArgument('destination');
         $this->destDatabaseName = $input->getArgument('destination-database');
+
+        if (!$this->askDoubleConfirmation($output)) {
+            return;
+        }
+
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.mysql.path', $output));
+
+        $testSrcDatabaseProcess = $builder->setArguments([
+            '-h'.$this->get('db.host', $output),
+            '-u'.$this->get('db.username', $output),
+            '-p'.$this->get('db.password', $output),
+            '-e',
+            'use '.$this->sourceDatabaseName,
+        ])->getProcess();
+        $output->writeln($testSrcDatabaseProcess->getCommandLine());
+        $testSrcDatabaseProcess->run();
+        // executes after the command finishes
+        if (!$testSrcDatabaseProcess->isSuccessful()) {
+            throw new ProcessFailedException($testSrcDatabaseProcess);
+        }
+
+        $testDestDatabaseProcess = $builder->setArguments([
+            '-h'.$this->get('db.host', $output),
+            '-u'.$this->get('db.username', $output),
+            '-p'.$this->get('db.password', $output),
+            '-e',
+            'use '.$this->destDatabaseName,
+        ])->getProcess();
+        $output->writeln($testDestDatabaseProcess->getCommandLine());
+        $testDestDatabaseProcess->run();
+        // executes after the command finishes
+        if (!$testDestDatabaseProcess->isSuccessful()) {
+            throw new ProcessFailedException($testDestDatabaseProcess);
+        }
+    }
+
+    protected function askDoubleConfirmation(OutputInterface $output)
+    {
         $dialog = $this->getHelper('dialog');
 
-        if (!$dialog->askConfirmation(
-                $output,
-                sprintf(
-                    '
+        return $dialog->askConfirmation(
+            $output,
+            sprintf(
+                '
 You are going to move your Roadiz files from "%s" to "%s".
 Your database "%s" will be used to OVERRIDE "%s" database.
 <question>Are these informations correct?</question>',
-                    $this->sourcePath,
-                    $this->destPath,
-                    $this->sourceDatabaseName,
-                    $this->destDatabaseName
-                ),
-                false
-            ) || !$dialog->askConfirmation(
-                $output,
-                '<question>Are you sure to continue?</question>',
-                false
-            )) {
-            return;
-        }
+                $this->sourcePath,
+                $this->destPath,
+                $this->sourceDatabaseName,
+                $this->destDatabaseName
+            ),
+            false
+        ) && $dialog->askConfirmation(
+            $output,
+            '<question>Are you sure to continue?</question>',
+            false
+        );
     }
 }

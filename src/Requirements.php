@@ -1,4 +1,3 @@
-#!/usr/bin/env php
 <?php
 /**
  * Copyright © 2015, Ambroise Maupate
@@ -21,26 +20,44 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  *
- * @file roadiz-cli-tools
+ * @file Requirements.php
  * @author Ambroise Maupate
  */
-use Symfony\Component\Console\Input\ArgvInput;
-use Symfony\Component\Debug\Debug;
-use RZ\RoadizCliTools\Application;
+namespace RZ\RoadizCliTools;
 
-set_time_limit(0);
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\Process;
 
-if (version_compare(phpversion(), '5.4.3', '<')) {
-    echo 'Your PHP version is ' . phpversion() . "." . PHP_EOL;
-    echo 'You need a least PHP version 5.4.3.' . PHP_EOL;
-    exit(1);
+class Requirements
+{
+    protected $binaries;
+
+    public function __construct(array $binaries = [])
+    {
+        $this->binaries = $binaries;
+    }
+
+    protected function isCommandAvailable($string, OutputInterface $output)
+    {
+        $process = new Process($string);
+        $process->run();
+        // executes after the command finishes
+        return $process->isSuccessful() && $process->getOutput() != "";
+    }
+
+    public function testBinaries(OutputInterface $output)
+    {
+        $testPassed = true;
+
+        foreach ($this->binaries as $binary => $command) {
+            $test = $this->isCommandAvailable($command, $output);
+            $output->writeln(sprintf('<info>%s</info> => %s', $binary, $test ? 'OK' : '<error>FAIL</error>'));
+
+            if ($test === false) {
+                $testPassed = false;
+            }
+        }
+
+        return $testPassed;
+    }
 }
-
-define('APP_ROOT', __DIR__);
-// Include Composer Autoload (relative to project root).
-require("vendor/autoload.php");
-
-Debug::enable();
-
-$application = new Application();
-$application->run();
