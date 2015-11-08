@@ -25,15 +25,14 @@
  */
 namespace RZ\RoadizCliTools\Command;
 
-use Symfony\Component\Console\Command\Command;
 use RZ\RoadizCliTools\Command\ConfigurableCommand;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\ProcessBuilder;
-use Symfony\Component\Process\Exception\ProcessFailedException;
 
 /**
  * Move data from one Roadiz instance to an other.
@@ -72,36 +71,41 @@ class MoveDataCommand extends ConfigurableCommand
             return;
         }
 
+        if (!$this->checkDatabaseExistance($this->sourceDatabaseName, $output)) {
+            throw new \Exception(sprintf('Source database ‘%s’ does not exist', $this->sourceDatabaseName), 1);
+        }
+        if (!$this->checkDatabaseExistance($this->destDatabaseName, $output)) {
+            throw new \Exception(sprintf('Destination database ‘%s’ does not exist', $this->destDatabaseName), 1);
+        }
+        if (!file_exists($this->sourcePath)) {
+            throw new \Exception(sprintf('Source path ‘%s’ does not exist', $this->sourcePath), 1);
+        }
+        if (!file_exists($this->destPath)) {
+            throw new \Exception(sprintf('Destination path ‘%s’ does not exist', $this->destPath), 1);
+        }
+        if (!file_exists($this->sourcePath.'/files') || !file_exists($this->sourcePath.'/bin/roadiz')) {
+            throw new \Exception(sprintf('Source path ‘%s’ is not a valid Roadiz repository.', $this->sourcePath), 1);
+        }
+        if (!file_exists($this->destPath.'/files') || !file_exists($this->destPath.'/bin/roadiz')) {
+            throw new \Exception(sprintf('Destination path ‘%s’ is not a valid Roadiz repository.', $this->destPath), 1);
+        }
+    }
+
+    protected function checkDatabaseExistance($databaseName, OutputInterface $output)
+    {
         $builder = new ProcessBuilder();
         $builder->setPrefix($this->get('commands.mysql.path', $output));
 
-        $testSrcDatabaseProcess = $builder->setArguments([
-            '-h'.$this->get('db.host', $output),
-            '-u'.$this->get('db.username', $output),
-            '-p'.$this->get('db.password', $output),
+        $databaseProcess = $builder->setArguments([
+            '-h' . $this->get('db.host', $output),
+            '-u' . $this->get('db.username', $output),
+            '-p' . $this->get('db.password', $output),
             '-e',
-            'use '.$this->sourceDatabaseName,
+            'use ' . $databaseName,
         ])->getProcess();
-        $output->writeln($testSrcDatabaseProcess->getCommandLine());
-        $testSrcDatabaseProcess->run();
+        $databaseProcess->run();
         // executes after the command finishes
-        if (!$testSrcDatabaseProcess->isSuccessful()) {
-            throw new ProcessFailedException($testSrcDatabaseProcess);
-        }
-
-        $testDestDatabaseProcess = $builder->setArguments([
-            '-h'.$this->get('db.host', $output),
-            '-u'.$this->get('db.username', $output),
-            '-p'.$this->get('db.password', $output),
-            '-e',
-            'use '.$this->destDatabaseName,
-        ])->getProcess();
-        $output->writeln($testDestDatabaseProcess->getCommandLine());
-        $testDestDatabaseProcess->run();
-        // executes after the command finishes
-        if (!$testDestDatabaseProcess->isSuccessful()) {
-            throw new ProcessFailedException($testDestDatabaseProcess);
-        }
+        return $databaseProcess->isSuccessful();
     }
 
     protected function askDoubleConfirmation(OutputInterface $output)

@@ -25,31 +25,27 @@
  */
 namespace RZ\RoadizCliTools\Command;
 
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputDefinition;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
-use Symfony\Component\Yaml\Yaml;
-use Symfony\Component\Config\Definition\Processor;
 use RZ\RoadizCliTools\Configuration;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
+use Symfony\Component\Config\Definition\Processor;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Yaml\Yaml;
 
-class ConfigurableCommand extends Command
+abstract class ConfigurableCommand extends Command
 {
     protected $processedConfiguration = null;
 
     protected function getConfiguration()
     {
         $configDefault = Yaml::parse(
-            file_get_contents(APP_ROOT.'/config.default.yml')
+            file_get_contents(APP_ROOT . '/config.default.yml')
         );
         $configs = [$configDefault];
 
-        if (file_exists(APP_ROOT.'/config.yml')) {
+        if (file_exists(APP_ROOT . '/config.yml')) {
             $configUser = Yaml::parse(
-                file_get_contents(APP_ROOT.'/config.yml')
+                file_get_contents(APP_ROOT . '/config.yml')
             );
             $configs[] = $configUser;
         }
@@ -71,29 +67,24 @@ class ConfigurableCommand extends Command
     public function get($path, OutputInterface $output)
     {
         if (null === $this->processedConfiguration) {
-            try {
-                $this->processedConfiguration = $this->getConfiguration();
-            } catch (InvalidConfigurationException $e) {
-                $output->writeln('<error>'.$e->getMessage().'</error>');
-                exit(1);
-            }
+            $this->processedConfiguration = $this->getConfiguration();
         }
 
         return $this->getValueAtPath($this->processedConfiguration, $path);
     }
 
-    private function getValueAtPath($array, $path) {
+    private function getValueAtPath($array, $path)
+    {
         $pathArray = explode('.', $path);
 
         $temp = &$array;
-        foreach($pathArray as $key) {
+        foreach ($pathArray as $key) {
             if (isset($temp[$key])) {
-                $temp =& $temp[$key];
+                $temp = &$temp[$key];
             } else {
                 throw new \Exception(sprintf("Configuration value for key ‘%s’ does not exist.", $path), 1);
             }
         }
         return $temp;
     }
-
 }

@@ -32,6 +32,9 @@ class Requirements
 {
     protected $binaries;
 
+    /**
+     * @param array $binaries
+     */
     public function __construct(array $binaries = [])
     {
         $this->binaries = $binaries;
@@ -45,6 +48,10 @@ class Requirements
         return $process->isSuccessful() && $process->getOutput() != "";
     }
 
+    /**
+     * @param  OutputInterface $output
+     * @return boolean
+     */
     public function testBinaries(OutputInterface $output)
     {
         $testPassed = true;
