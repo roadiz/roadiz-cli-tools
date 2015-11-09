@@ -18,6 +18,9 @@ commands:
     composer:
         path: composer
         test: composer --version
+    php:
+        path: php
+        test: php --version
 db:
     host: localhost
     username: ~

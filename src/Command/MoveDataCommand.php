@@ -33,6 +33,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\ProcessBuilder;
+use Symfony\Component\Console\Helper\ProgressBar;
+use Chain\Chain;
 
 /**
  * Move data from one Roadiz instance to an other.
@@ -67,9 +69,19 @@ class MoveDataCommand extends ConfigurableCommand
         $this->destPath = $input->getArgument('destination');
         $this->destDatabaseName = $input->getArgument('destination-database');
 
+        $backupPath = $this->destPath . '_backup';
+
+        $progress = new ProgressBar($output, 9);
+        $progress->setFormat(" <info>%message%</info>\n %current%/%max% [%bar%] %percent:3s%% %elapsed:6s%/%estimated:-6s% %memory:6s%");
+
         if (!$this->askDoubleConfirmation($output)) {
             return;
         }
+
+        $output->writeln(' ');
+
+        $progress->setMessage('Making some checks…');
+        $progress->start();
 
         if (!$this->checkDatabaseExistance($this->sourceDatabaseName, $output)) {
             throw new \Exception(sprintf('Source database ‘%s’ does not exist', $this->sourceDatabaseName), 1);
@@ -83,26 +95,305 @@ class MoveDataCommand extends ConfigurableCommand
         if (!file_exists($this->destPath)) {
             throw new \Exception(sprintf('Destination path ‘%s’ does not exist', $this->destPath), 1);
         }
+        if ($this->sourcePath == $this->destPath) {
+            throw new \Exception(sprintf('Source and destination paths ‘%s’ are the same', $this->destPath), 1);
+        }
         if (!file_exists($this->sourcePath.'/files') || !file_exists($this->sourcePath.'/bin/roadiz')) {
             throw new \Exception(sprintf('Source path ‘%s’ is not a valid Roadiz repository.', $this->sourcePath), 1);
         }
         if (!file_exists($this->destPath.'/files') || !file_exists($this->destPath.'/bin/roadiz')) {
             throw new \Exception(sprintf('Destination path ‘%s’ is not a valid Roadiz repository.', $this->destPath), 1);
         }
+
+        /*
+         * Dump mysql database
+         */
+        $progress->setMessage('Dumping source database…');
+        $progress->advance();
+        $tmp_mysqldump = tempnam(sys_get_temp_dir(), $this->sourceDatabaseName . '_dump');
+        if (false === $this->dumpDatabase($this->sourceDatabaseName, $tmp_mysqldump, $output)) {
+            throw new \Exception(sprintf(
+                'Impossible to dump ‘%s’ database to ‘%s’ file.',
+                $this->sourceDatabaseName,
+                $tmp_mysqldump
+            ), 1);
+        }
+
+        /*
+         * Backup destination database before overriding it.
+         */
+        if ($input->getOption('backup')) {
+            $progress->setMessage('Backup destination database before overriding it…');
+            $progress->advance();
+
+            /*
+             * Create backup folder if not exists
+             */
+            if (!file_exists($backupPath)) {
+                mkdir($backupPath, 0775);
+            }
+            $tmp_mysqldump2 = sprintf("%s/%s_%s.sql", $backupPath, $this->destDatabaseName, date('YmdHis'));
+            if (false === $this->dumpDatabase($this->destDatabaseName, $tmp_mysqldump2, $output)) {
+                throw new \Exception(sprintf(
+                    'Impossible to dump ‘%s’ database to ‘%s’ file.',
+                    $this->destDatabaseName,
+                    $tmp_mysqldump2
+                ), 1);
+            }
+        } else {
+            $progress->advance();
+        }
+
+        /*
+         * Import dump into new database
+         */
+        $progress->setMessage('Importing dump file into destination database…');
+        $progress->advance();
+        if (false === $this->importDatabase($this->destDatabaseName, $tmp_mysqldump, $output)) {
+            throw new \Exception(sprintf(
+                'Impossible to import ‘%s’ database from ‘%s’ file.',
+                $this->destDatabaseName,
+                $tmp_mysqldump
+            ), 1);
+        }
+
+        /*
+         * Backup destination files before overriding them…
+         */
+        if ($input->getOption('backup')) {
+            $progress->setMessage('Backup destination files before overriding them…');
+            $progress->advance();
+
+            /*
+             * Create backup folder if not exists
+             */
+            $filesBackupPath = $backupPath . '/' . date('YmdHis');
+            if (!file_exists($backupPath)) {
+                mkdir($backupPath, 0775);
+            }
+            if (!file_exists($filesBackupPath)) {
+                mkdir($filesBackupPath, 0775);
+                mkdir($filesBackupPath . '/files', 0775);
+            }
+            if (false === $this->rsyncFiles($this->destPath, $filesBackupPath, $output)) {
+                throw new \Exception(sprintf(
+                    'Impossible to sync ‘%s/files/’ to ‘%s/files/’.',
+                    $this->destPath,
+                    $this->filesBackupPath
+                ), 1);
+            }
+        } else {
+            $progress->advance();
+        }
+
+        /*
+         * RSync Roadiz documents files…
+         */
+        $progress->setMessage('Syncing Roadiz document files…');
+        $progress->advance();
+        if (false === $this->rsyncFiles($this->sourcePath, $this->destPath, $output)) {
+            throw new \Exception(sprintf(
+                'Impossible to sync ‘%s/files/’ to ‘%s/files/’.',
+                $this->sourcePath,
+                $this->destPath
+            ), 1);
+        }
+
+        /*
+         * Regenerate nodeSources classes
+         */
+        $progress->setMessage('Regenerating NodesSources classes…');
+        $progress->advance();
+        if (false === $this->regenerateNodesSourcesClasses($this->destPath, $output)) {
+            throw new \Exception(sprintf(
+                'Impossible to regenerate NodesSources classes in ‘%s/gen-src/GeneratedNodeSources/’.',
+                $this->destPath
+            ), 1);
+        }
+
+        /*
+         * Regenerate nodeSources classes
+         */
+        $progress->setMessage('Update database schema…');
+        $progress->advance();
+        if (false === $this->updateDatabaseSchema($this->destPath, $output)) {
+            throw new \Exception(sprintf(
+                'Impossible to update database schema in ‘%s’.',
+                $this->destPath
+            ), 1);
+        }
+
+        /*
+         * Regenerate nodeSources classes
+         */
+        $progress->setMessage('Empty Roadiz caches…');
+        $progress->advance();
+        if (false === $this->emptyCacheSchema($this->destPath, $output)) {
+            throw new \Exception(sprintf(
+                'Impossible to empty caches in ‘%s’.',
+                $this->destPath
+            ), 1);
+        }
+
+        $progress->setMessage('Done!');
+        $progress->finish();
+    }
+
+    protected function regenerateNodesSourcesClasses($destPath, OutputInterface $output)
+    {
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.php.path', $output));
+        $builder->setWorkingDirectory($destPath);
+        $arguments = [
+            'bin/roadiz',
+            'core:sources',
+            '-r',
+        ];
+
+        $regenProcess = $builder->setArguments($arguments)->getProcess();
+        if ($output->getVerbosity() === OutputInterface::VERBOSITY_DEBUG) {
+            $output->writeln($regenProcess->getCommandLine());
+        }
+        $regenProcess->run();
+        // executes after the command finishes
+        return $regenProcess->isSuccessful();
+    }
+
+    protected function updateDatabaseSchema($destPath, OutputInterface $output)
+    {
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.php.path', $output));
+        $builder->setWorkingDirectory($destPath);
+        $arguments = [
+            'bin/roadiz',
+            'orm:schema-tool:update',
+            '--dump-sql',
+            '--force',
+        ];
+
+        $updateSchemaProcess = $builder->setArguments($arguments)->getProcess();
+        if ($output->getVerbosity() === OutputInterface::VERBOSITY_DEBUG) {
+            $output->writeln($updateSchemaProcess->getCommandLine());
+        }
+        $updateSchemaProcess->run();
+        // executes after the command finishes
+        return $updateSchemaProcess->isSuccessful();
+    }
+
+    protected function emptyCacheSchema($destPath, OutputInterface $output)
+    {
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.php.path', $output));
+        $builder->setWorkingDirectory($destPath);
+        $arguments = [
+            'bin/roadiz',
+            'cache',
+            '-a',
+            '--env=prod',
+        ];
+
+        $emptyCacheProcess = $builder->setArguments($arguments)->getProcess();
+        if ($output->getVerbosity() === OutputInterface::VERBOSITY_DEBUG) {
+            $output->writeln($emptyCacheProcess->getCommandLine());
+        }
+        $emptyCacheProcess->run();
+        // executes after the command finishes
+        return $emptyCacheProcess->isSuccessful();
+    }
+
+    protected function rsyncFiles($sourcePath, $destPath, OutputInterface $output)
+    {
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.rsync.path', $output));
+        $arguments = [
+            '-avc',
+            '--delete',
+            $sourcePath . '/files/',
+            $destPath . '/files/',
+        ];
+
+        $rsyncProcess = $builder->setArguments($arguments)->getProcess();
+        if ($output->getVerbosity() === OutputInterface::VERBOSITY_DEBUG) {
+            $output->writeln($rsyncProcess->getCommandLine());
+        }
+        $rsyncProcess->run();
+        // executes after the command finishes
+        return $rsyncProcess->isSuccessful();
+    }
+
+    protected function dumpDatabase($databaseName, $outputFilePath, OutputInterface $output)
+    {
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.mysqldump.path', $output));
+        $arguments = [
+            '-h' . $this->get('db.host', $output),
+            '-u' . $this->get('db.username', $output),
+            '-p' . $this->get('db.password', $output),
+        ];
+
+        if ($this->get('db.port', $output) > 0) {
+            $arguments[] = '--port=' . $this->get('db.port', $output);
+        }
+        $arguments[] = $databaseName;
+
+        $databaseProcess = $builder->setArguments($arguments)->getProcess();
+
+        $chain = new Chain($databaseProcess);
+        $chain->add('>', $outputFilePath);
+
+        $chainProcess = $chain->getProcess();
+        if ($output->getVerbosity() === OutputInterface::VERBOSITY_DEBUG) {
+            $output->writeln($chainProcess->getCommandLine());
+        }
+        $chainProcess->run();
+        // executes after the command finishes
+        return $chainProcess->isSuccessful();
+    }
+
+    protected function importDatabase($databaseName, $inputFilePath, OutputInterface $output)
+    {
+        $builder = new ProcessBuilder();
+        $builder->setPrefix($this->get('commands.mysql.path', $output));
+        $arguments = [
+            '-h' . $this->get('db.host', $output),
+            '-u' . $this->get('db.username', $output),
+            '-p' . $this->get('db.password', $output),
+        ];
+
+        if ($this->get('db.port', $output) > 0) {
+            $arguments[] = '--port=' . $this->get('db.port', $output);
+        }
+        $arguments[] = $databaseName;
+
+        $databaseProcess = $builder->setArguments($arguments)->getProcess();
+
+        $chain = new Chain($databaseProcess);
+        $chain->add('<', $inputFilePath);
+        //$output->writeln($databaseProcess->getCommandLine());
+        $chainProcess = $chain->getProcess();
+        $chainProcess->run();
+        // executes after the command finishes
+        return $chainProcess->isSuccessful();
     }
 
     protected function checkDatabaseExistance($databaseName, OutputInterface $output)
     {
         $builder = new ProcessBuilder();
         $builder->setPrefix($this->get('commands.mysql.path', $output));
-
-        $databaseProcess = $builder->setArguments([
+        $arguments = [
             '-h' . $this->get('db.host', $output),
             '-u' . $this->get('db.username', $output),
             '-p' . $this->get('db.password', $output),
             '-e',
             'use ' . $databaseName,
-        ])->getProcess();
+        ];
+
+        if ($this->get('db.port', $output) > 0) {
+            $arguments[] = '--port=' . $this->get('db.port', $output);
+        }
+
+        $databaseProcess = $builder->setArguments($arguments)->getProcess();
+
         $databaseProcess->run();
         // executes after the command finishes
         return $databaseProcess->isSuccessful();
@@ -116,9 +407,9 @@ class MoveDataCommand extends ConfigurableCommand
             $output,
             sprintf(
                 '
-You are going to move your Roadiz files from "%s" to "%s".
-Your database "%s" will be used to OVERRIDE "%s" database.
-<question>Are these informations correct?</question>',
+You are going to move your Roadiz files from <info>"%s"</info> to <info>"%s"</info>.
+Your database <info>"%s"</info> will be used to OVERRIDE <info>"%s"</info> database.
+<question>Are these informations correct? (yes|no)</question> ',
                 $this->sourcePath,
                 $this->destPath,
                 $this->sourceDatabaseName,
@@ -127,7 +418,7 @@ Your database "%s" will be used to OVERRIDE "%s" database.
             false
         ) && $dialog->askConfirmation(
             $output,
-            '<question>Are you sure to continue?</question>',
+            '<question>This operation cannot be undone, are you sure to continue? (yes|no)</question> ',
             false
         );
     }

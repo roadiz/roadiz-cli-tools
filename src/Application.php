@@ -39,6 +39,10 @@ class Application extends BaseApplication
     public function __construct()
     {
         parent::__construct('Roadiz CLI tools', '0.1.0');
+
+        if (ini_get('date.timezone') == "") {
+            date_default_timezone_set('UTC');
+        }
     }
 
     /**
